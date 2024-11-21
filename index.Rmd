@@ -1,0 +1,482 @@
+---
+title: 'Data Cleaning Pipeline 2:  Fixing Inconsistencies'
+author:
+  - name: "Kene David Nwosu"
+  - name: "Amanda McKinley"
+  - name: "Laure Vancauwenberghe"
+date: "2024-11-21"
+output:
+  html_document:
+    code_folding: "show"
+    code_download: true
+    number_sections: true
+    toc: true
+    toc_float: true
+    css: !expr here::here("global/style/style.css")
+    highlight: kate
+editor_options: 
+  chunk_output_type: inline
+  markdown: 
+    wrap: 72
+---
+
+```{r, echo = F, message = F, warning = F}
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, knitr, here)
+
+## functions
+source(here::here("global/functions/misc_functions.R"))
+
+## default render
+registerS3method("reactable_5_rows", "data.frame", reactable_5_rows)
+knitr::opts_chunk$set(class.source = "tgc-code-block")
+```
+
+# Introduction
+
+In the previous lesson, we learned a range of functions for diagnosing data issues. Now, let's focus on some common techniques and functions for fixing those issues. Let's get started!
+
+# Learning Objectives
+
+By the end of this lesson, you will be able to:
+
+-   Understand how to clean column names, both automatically and manually.
+-   Effectively eliminate duplicate entries.
+-   Correct and fix string values in your data.
+-   Convert data types as required.
+
+# Packages
+
+Load the following packages for this lesson:
+
+```{r warning = F, message = F, echo = F}
+# Load packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse,
+               janitor,
+               inspectdf)
+```
+
+## Dataset
+
+‣ Working with a **modified version** of the dataset from the first `Data Cleaning` lesson.
+
+‣ **More errors** have been added for cleaning purposes.
+
+```{r}
+non_adherence <- read_csv(here("data/non_adherence_messy.csv"))
+non_adherence
+```
+
+## Cleaning column names
+
+‣ Column names should be **clean** and **standardized** for ease of use and readability.
+
+‣ Ideal column names should be **short**, have **no spaces or periods**, **no unusual characters**, and **similar style**.
+
+‣ Use the `names()` function from base R to check column names of our `non_adherence` dataset.
+
+```{r}
+ # check column names
+names(non_adherence)
+```
+
+‣ Some names have **spaces**, **special characters**, or are **not uniformly cased**.
+
+## Automatic column name cleaning with `janitor::clean_names()`
+
+‣ Use `janitor::clean_names()` to **standardize column names**.
+
+```{r}
+non_adherence %>%
+  clean_names() %>%
+  names()
+```
+
+‣ Observe changes like **upper case to lower case**, **spaces to underscores**, and **periods replaced**.
+
+‣ Let's save this cleaned dataset as `non_adherence_clean`.
+
+```{r}
+non_adherence_clean <- 
+  non_adherence %>%
+  clean_names()
+```
+
+::: r-practice
+### Q: Automatic cleaning {.unlisted .unnumbered}
+
+*(NOTE: Answers are at the bottom of the page. Try to answer the questions yourself before checking.)*
+
+The following dataset has been adapted from a study that used retrospective data to characterize the tmporal and spatial dynamics of typhoid fever epidemics in Kasene, Uganda.
+
+```{r eval = F}
+typhoid <- read_csv(here("data/typhoid_uganda.csv"))
+
+names(typhoid)
+```
+
+Use the `clean_names()` function from `janitor` to clean the variables names in the `typhoid` dataset.
+
+```{r}
+typhoid <- read_csv(here("data/typhoid_uganda.csv"))
+
+typhoid %>%
+  clean_names() %>% 
+  names()
+  
+```
+
+:::
+
+## {stringr} and `dplyr::rename_with()` for Renaming Columns
+
+‣ `rename_with()` from `dplyr` allows applying functions to all column names. Sometimes easier to use than `rename()`.
+
+‣ Example: Convert all column names to upper case with `rename_with(colname, toupper)`.
+
+```{r}
+non_adherence %>%
+  rename_with(.cols = everything(), .fn = toupper)
+```
+
+‣ Another task: In the `non_adherence` dataset, remove `_of_patient` from column names for simplicity.
+
+‣ Use `stringr::str_replace_all()` within `rename_with()` for this task.
+
+‣ `str_replace_all()` syntax: `str_replace_all(string, pattern, replacement)`.
+
+```{r}
+test_string <- "this is a test test string" # replace test with new
+str_replace_all(string = test_string, pattern = "test", replacement = "new")
+```
+
+‣ Apply `str_replace_all()` to remove `_of_patient` in column names of `non_adherence_clean`.
+
+```{r}
+non_adherence_clean_2 <- non_adherence_clean %>% 
+  rename_with(.cols = c(occupation_of_patient, education_of_patient), .fn = ~ str_replace_all(.x, "_of_patient", ""))
+   # non_adherence_clean then rename_with()
+```
+
+::: side-note
+Remember, creating many intermediate objects like `non_adherence_clean` and `non_adherence_clean_2` is for tutorial clarity. In practice, combine multiple cleaning steps in a single pipe chain:
+
+```{r eval = F}
+non_adherence_clean <- 
+  non_adherence %>%
+  # cleaning step 1 %>%
+  # cleaning step 2 %>%
+  # cleaning step 3 %>%
+  # etc.
+```
+:::
+
+::: r-practice
+### Q: Complete cleaning of column names {.unlisted .unnumbered}
+
+Standardize the column names in the `typhoid` dataset with `clean_names()` then;
+
+-   replace `or_` with `_`
+
+-   replace `of` with `_`
+
+```{r}
+typhoid %>% 
+  clean_names() %>% 
+  rename_with(.cols = c(caseor_control, levelofeducation), .fn = ~ str_replace_all(.x, c("or_", "of"), "_"))
+  
+```
+
+:::
+
+## Removing Duplicate Rows
+
+‣ Duplicated rows in datasets can be due to **multiple data sources** or **survey responses**.
+
+‣ It's **essential** to **identify and remove these duplicates** for accurate analysis.
+
+‣ Use `janitor::get_dupes()` to **identify duplicate rows**. This allows for **visual inspection** before removal.
+
+```{r}
+ # Use get_dupes() to identify duplicates
+get_dupes(non_adherence_clean_2)
+```
+
+‣ After identifying, use `dplyr::distinct()` to **remove duplicates**, keeping only the **unique rows**.
+
+```{r}
+# Before removal
+nrow(non_adherence_clean_2)
+
+# Removing duplicates
+non_adherence_distinct <- 
+  non_adherence_clean_2 %>% 
+  distinct()
+
+# After removal
+nrow(non_adherence_distinct)
+```
+
+‣ Re-check for duplicates with `get_dupes()` to ensure all have been removed.
+
+```{r}
+non_adherence_distinct %>% 
+  get_dupes()
+```
+
+::: r-practice
+### Q: Removing duplicates {.unlisted .unnumbered}
+
+Identify the duplicates in the `typhoid` dataset using `get_dupes()`, then remove them using `distinct()`.
+
+```{r}
+# Number of rows before duplicates removal
+nrow(typhoid)
+
+# Get duplicated rows
+typhoid %>% 
+  get_dupes()
+
+# Remove duplicated rows
+typhoid_distinct <- typhoid %>% 
+  distinct() 
+  
+# Number of rows aqfter removing duplicates
+nrow(typhoid_distinct)
+```
+
+:::
+
+## Homogenize strings
+
+‣ We observed **inconsistent capitalization** in string characters, like `Professor` and `professor`, in the `occupation` variable.
+
+‣ To address this, we can **transform character columns to a specific case**. Here, we'll use **title case**. Preferable for graphics and reports.
+
+```{r}
+non_adherence_case_corrected <- 
+  non_adherence_distinct %>% 
+  mutate(across(.cols = c(sex, age_35, education, occupation, civil_status), .fns = str_to_title)) # then the across function
+
+  # check the values of age_35 and occupation
+non_adherence_distinct %>% 
+  count(age_35)
+
+non_adherence_distinct %>% 
+  count(occupation) %>% 
+  arrange(-(str_detect(occupation, "rofessor")))
+
+ # check the updated values of age_35 and occupation
+non_adherence_case_corrected %>% 
+  count(age_35)
+
+non_adherence_case_corrected %>% 
+  count(occupation) %>% 
+  arrange(-(str_detect(occupation, "rofessor")))
+```
+
+::: r-practice
+### Q: Transforming to lowercase {.unlisted .unnumbered}
+
+Transform all the strings in the `typhoid` dataset to lowercase.
+
+```{r}
+typhoid_distinct %>% 
+  mutate(across(Positioninthehousehold:Village, .fns = str_to_lower))
+```
+
+:::
+
+## `dplyr::case_match()` for String Cleaning
+
+‣ We will explore the `case_match()` function from the {dplyr} package for string cleaning.
+
+‣ `case_match()` allows for specifying conditions and values to be applied to a vector.
+
+‣ Here is an example using `case_match()`:
+
+```{r eval = F}
+test_vector <- c("+", "-", "NA", "missing")
+case_match(test_vector,
+           "+" ~ "positive",
+           "-" ~ "negative",
+           .default = "unknown") # + to positive, - to negative, default as unknown
+```
+
+‣ The function takes a vector and series of conditions. `.default` is optional for unmatched conditions.
+
+‣ Let's apply `case_match()` to the `sex` column in the `non_adherence_distinct` dataset.
+
+‣ First, observe the levels in this variable:
+
+```{r}
+non_adherence_distinct %>% 
+  count(sex)
+```
+
+‣ Inconsistencies in the `sex` column coding can be fixed using `case_match()`. Let's change `F` to `Female`:
+
+```{r}
+# case match F to Female, with default as is
+non_adherence_distinct %>% 
+  mutate(sex = case_match(sex, "F" ~ "Female", .default = sex))
+```
+
+‣ This function is useful for multiple value changes, like in the `occupation` column.
+
+‣ Modifications to be made: - "Worker" to "Laborer" - "Housewife" to "Homemaker" - "Truck Driver" and "Taxi Driver" to "Driver"
+
+```{r}
+non_adherence_recoded <- 
+  non_adherence_case_corrected %>%
+  mutate(sex = case_match(sex, "F" ~ "Female", .default = sex)) %>%
+  mutate(occupation = case_match(occupation, "Worker" ~ "Laborer", "Housewife" ~ "Homemaker", "Truck Driver" ~ "Driver", "Taxi Driver" ~ "Driver",
+                                 .default = occupation))
+  # case match Worker to Laborer, Housewife to Homemaker, Truck Driver and Taxi Driver to Driver
+non_adherence_recoded
+```
+
+::: warning
+Remember to use `.default=column_name` in `case_match()`. Without it, unmatched values become `NA`.
+:::
+
+::: r-practice
+### Q: Fixing strings {.unlisted .unnumbered}
+
+The variable `householdmembers` from the `typhoid` dataset should represent the number of individuals in a household. There is a value `01-May` in this variable. Recode this value to `1-5`.
+
+```{r}
+typhoid %>% 
+  mutate(Householdmembers = case_match(Householdmembers,
+                                      "01-May" ~ "1-5", .default = Householdmembers))
+```
+
+:::
+
+## Converting Data Types
+
+‣ Understanding and correctly classifying 2data types is crucial for data to behave as expected.
+
+::: reminder
+R's 6 basic data types/classes:
+
+-   `character`: strings or characters, always quoted.
+-   `numeric`: real numbers, including decimals.
+-   `integer`: whole numbers.
+-   `logical`: `TRUE` or `FALSE` values.
+-   `factor`: categorical variables.
+-   `Date/POSIXct`: dates and times.
+:::
+
+‣ Recall our dataset: 5 character variables and 9 numeric variables.
+
+```{r}
+str(non_adherence_recoded)
+```
+
+‣ Looking at our data, the only true numerical variables are `age_at_art_initation`, `bmi_initiation_art`, `cd4_initiation_art`, and `nr_of_pills_day`. Let's change all the others to factor variables using the `as.factor()` function!
+
+‣ Change all others to factor variables using as.factor within across.
+
+```{r}
+non_adherence_recoded %>%
+  mutate(across(
+    .cols = !c(age_at_art_initiation, bmi_initiation_art, cd4_initiation_art, nr_of_pills_day),
+    .fns = as.factor
+  ))
+```
+
+‣ This should result in correct classification as expected.
+
+::: r-practice
+### Q: Changing data types {.unlisted .unnumbered}
+
+Convert the variables in positions 13 to 29 in the `typhoid` dataset to factor.
+
+```{r}
+typhoid %>% 
+  mutate(across(Positioninthehousehold:Village, .fns = as.factor))
+```
+
+
+:::
+
+
+# Learning Objectives
+
+By the end of this lesson, you will be able to:
+
+‣ Understand how to clean column names, both automatically and manually.
+
+‣ Eliminate duplicate entries.
+
+‣ Correct and fix string values in your data.
+
+‣ Convert data types as required.
+
+# Wrap Up!
+
+Congratulations on completing the two-part lesson on the data cleaning pipeline! You are now better equipped to tackle the cleaning of real-world datasets.
+
+Keep practicing!
+
+# Answer Key {.unnumbered}
+
+### Q: Automatic cleaning {.unlisted .unnumbered}
+
+```{r render=reactable_5_rows}
+clean_names(typhoid)
+```
+
+### Q: Complete cleaning of column names {.unlisted .unnumbered}
+
+```{r}
+typhoid %>%
+  clean_names() %>%
+  rename_with(.fn = ~ str_replace_all(.x, pattern = "or_|of", replacement = "_")) %>%
+  names()
+```
+
+### Q: Removing duplicates {.unlisted .unnumbered}
+
+```{r render=reactable_5_rows}
+# Identify duplicates
+get_dupes(typhoid)
+
+# Remove duplicates
+typhoid_distinct <- typhoid %>% 
+  distinct()
+
+# Ensure all distinct rows left 
+get_dupes(typhoid_distinct)
+```
+
+### Q: Transforming to lowercase {.unlisted .unnumbered}
+
+```{r render=reactable_5_rows}
+typhoid %>% 
+  mutate(across(where(is.character),
+                ~ tolower(.x)))
+```
+
+### Q: Fixing strings {.unlisted .unnumbered}
+
+```{r render=reactable_5_rows}
+typhoid %>%
+  mutate(Householdmembers = case_match(Householdmembers, "01-May" ~ "1-5", .default=Householdmembers)) %>% 
+  count(Householdmembers)
+```
+
+### Q: Changing data types {.unlisted .unnumbered}
+
+```{r render=reactable_5_rows}
+typhoid %>%
+  mutate(across(13:29, ~as.factor(.)))
+```
+
+# Contributors {.unlisted .unnumbered}
+
+The following team members contributed to this lesson:
+
+`r tgc_contributors_list(ids = c("amckinley", "kendavidn", "lolovanco", "elmanuko"))`
